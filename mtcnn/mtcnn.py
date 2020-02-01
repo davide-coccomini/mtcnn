@@ -335,8 +335,6 @@ class MTCNN(object):
         print("stage1")
         print(stage_status)
         for scale in scales:
-            print("Scaling images with scale")
-            print(scale)
             scaled_images = self.__scale_image(images, scale)
 
             print("Images scaled")
@@ -348,9 +346,6 @@ class MTCNN(object):
             out0 = np.transpose(out[0], (0, 2, 1, 3))
             out1 = np.transpose(out[1], (0, 2, 1, 3))
             
-            print(out.shape)
-            print("valhalla")
-            print(out)
             print("Predicted. Generating boxes...")
             boxes, _ = self.__generate_bounding_box(out1[0, :, :, 1].copy(),
                                                     out0[0, :, :, :].copy(), scale, self._steps_threshold[0])
