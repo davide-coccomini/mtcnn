@@ -109,24 +109,25 @@ class MTCNN(object):
         return scales
 
     @staticmethod
-    def __scale_image(image, scale: float):
+    def __scale_image(images, scale: float):
         """
         Scales the image to a given scale.
         :param image:
         :param scale:
         :return:
         """
-        height, width, _ = image.shape
+        height, width, _ = images[0].shape
 
         width_scaled = int(np.ceil(width * scale))
         height_scaled = int(np.ceil(height * scale))
+        for counter,image in enumerate(images):
+            im_data = cv2.resize(image, (width_scaled, height_scaled), interpolation=cv2.INTER_AREA)
 
-        im_data = cv2.resize(image, (width_scaled, height_scaled), interpolation=cv2.INTER_AREA)
+            # Normalize the image's pixels
+            im_data_normalized = (im_data - 127.5) * 0.0078125
+            images[counter] = im_data
 
-        # Normalize the image's pixels
-        im_data_normalized = (im_data - 127.5) * 0.0078125
-
-        return im_data_normalized
+        return images
 
     @staticmethod
     def __generate_bounding_box(imap, reg, scale, t):
@@ -275,16 +276,17 @@ class MTCNN(object):
         boundingbox[:, 0:4] = np.transpose(np.vstack([b1, b2, b3, b4]))
         return boundingbox
 
-    def detect_faces(self, img) -> list:
+    def detect_faces(self, images) -> list:
         """
         Detects bounding boxes from the specified image.
         :param img: image to process
         :return: list containing all the bounding boxes detected with their keypoints.
         """
-        if img is None or not hasattr(img, "shape"):
-            raise InvalidImage("Image not valid.")
+        for img in images:
+            if img is None or not hasattr(img, "shape"):
+                raise InvalidImage("Image not valid.")
 
-        height, width, _ = img.shape
+        height, width, _ = images[0].shape
         stage_status = StageStatus(width=width, height=height)
 
         m = 12 / self._min_face_size
@@ -297,7 +299,7 @@ class MTCNN(object):
 
         # We pipe here each of the stages
         for stage in stages:
-            result = stage(img, result[0], result[1])
+            result = stage(images, result[0], result[1])
 
         [total_boxes, points] = result
 
@@ -320,7 +322,7 @@ class MTCNN(object):
 
         return bounding_boxes
 
-    def __stage1(self, image, scales: list, stage_status: StageStatus):
+    def __stage1(self, images, scales: list, stage_status: StageStatus):
         """
         First stage of the MTCNN.
         :param image:
@@ -330,21 +332,29 @@ class MTCNN(object):
         """
         total_boxes = np.empty((0, 9))
         status = stage_status
-
+        print("stage1")
+        print(stage_status)
         for scale in scales:
-            scaled_image = self.__scale_image(image, scale)
+            print("Scaling images with scale")
+            print(scale)
+            scaled_images = self.__scale_image(images, scale)
 
-            img_x = np.expand_dims(scaled_image, 0)
-            img_y = np.transpose(img_x, (0, 2, 1, 3))
-
-            out = self._pnet.predict(img_y)
+            print("Images scaled")
+            #img_x = np.expand_dims(scaled_image, 0)
+            img_y = np.transpose(scaled_images, (0, 2, 1, 3))
+            print("Predict...")
+            out = self._pnet.predict(images)
 
             out0 = np.transpose(out[0], (0, 2, 1, 3))
             out1 = np.transpose(out[1], (0, 2, 1, 3))
-
+            
+            print(out.shape)
+            print("valhalla")
+            print(out)
+            print("Predicted. Generating boxes...")
             boxes, _ = self.__generate_bounding_box(out1[0, :, :, 1].copy(),
                                                     out0[0, :, :, :].copy(), scale, self._steps_threshold[0])
-
+            print("Generated boxes")
             # inter-scale nms
             pick = self.__nms(boxes.copy(), 0.5, 'Union')
             if boxes.size > 0 and pick.size > 0:
@@ -382,7 +392,8 @@ class MTCNN(object):
         :param stage_status:
         :return:
         """
-
+        print("stage2")
+        print(stage_status)
         num_boxes = total_boxes.shape[0]
         if num_boxes == 0:
             return total_boxes, stage_status
@@ -435,6 +446,8 @@ class MTCNN(object):
         :param stage_status:
         :return:
         """
+        print("stage3")
+        print(stage_status)
         num_boxes = total_boxes.shape[0]
         if num_boxes == 0:
             return total_boxes, np.empty(shape=(0,))
